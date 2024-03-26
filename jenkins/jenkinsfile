@@ -1,0 +1,45 @@
+pipeline {
+    agent {
+        kubernetes {
+            name 'jenkins'  // Name of your Kubernetes Jenkins agent
+            label 'jenkins'  // Optional label for the Jenkins agent
+            cloud 'kubernetes' // Name of your configured Kubernetes cloud
+        }
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'test/nivl/jenkinsServiceOnK8s',
+                   credentialsId: 'your-git-credentials-id',
+                   url: 'https://github.com/niv7488/Jenkins-service-home-task.git'
+            }
+        }
+        stage('Build .NET Core App') {
+            steps {
+                script {
+                    // Assuming .NET Core SDK is installed on the agent
+                    sh '''
+                    dotnet publish --configuration Release
+                    '''
+                }
+            }
+        }
+        stage('Deploy to Kubernetes (Target Namespace)') {
+            steps {
+                container('docker') { // Optional Docker container for deployment commands
+                    withCredentials([usernamePassword(credentialsId: 'your-kubeconfig-credentials-id', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                        sh '''
+                        # Login to Kubernetes using kubectl
+                        echo $USERNAME | docker login -u $USERNAME -p $PASSWORD $(kubectl config view -o jsonpath="{.clusters[?(@.name == 'your-cluster-name')].cluster.server}")
+                        
+                        # Assuming the image is built and tagged during the build stage (e.g., your-app:latest)
+                        kubectl apply -f deployment.yaml -n target-namespace
+                        kubectl apply -f service.yaml -n target-namespace
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}
